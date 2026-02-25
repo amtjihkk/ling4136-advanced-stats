@@ -1,9 +1,9 @@
 ---
-title: "session04 - homework - solutions"
+title: "session04 - homework"
 format: html
 editor: visual
-date: 2025-07-17
-author: Timo Roettger
+date: 2026-02-17
+author: Tjihkkom-Are
 execute:
   error: false
   warning: false
@@ -50,7 +50,7 @@ Let's load in the data and have a look:
 ```{r}
 #| label: load-in
 
-incomplete <- read_csv("../../data/incomplete_perception.csv") |> 
+incomplete <- read_csv("incomplete_perception.csv") |> 
   # preprocessing the data such that everything that ought to be a factor is one
   mutate(listener = as.factor(listener),
          voice = as.factor(voice), 
@@ -87,7 +87,30 @@ Build that model with the appropriate random effect structure, taking into accou
 ```{r}
 #| label: glmer_incomplete
 
-# YOUR CODE HERE
+# Predict chosen_voicing by correct_voicing and item_pair, random intercepts for listener and voice. 
+
+
+glmer_incomplete <- glmer(chosen_voicing ~ correct_voicing
+                      + (1 | item_pair)
+                      + (1 + correct_voicing | item_pair)
+                      + (1 | listener)
+                      + (1 + correct_voicing | listener),
+                      data = incomplete,
+                      family = binomial)
+
+# Does not converge. 
+
+summary(glmer_incomplete)
+
+
+#Remove slope for listener, does converge.
+
+glmer_incomplete <- glmer(chosen_voicing ~ correct_voicing
+                      + (1 + correct_voicing | item_pair)
+                      + (1 + correct_voicing | listener),
+                      data = incomplete,
+                      family = binomial)
+
 
 ```
 
@@ -98,8 +121,37 @@ Interpret the model coefficients and calculate p-values for the relevant predict
 ```{r}
 #| label: interpretation
 
-# YOUR CODE HERE
+# Summary of the reduced model that converges.
 
+summary(glmer_incomplete)
+
+# Convert intercept -0.05964 to convert logit number to natural number.
+
+plogis(-0.05964)
+
+# The output is 0.4850944, which means that there the model predicts a 48.5% chance for the listener to choose voiced when the correct voicing was also voiced. Since the value voiced/voiceless is binary, this means that the chance to choose voiceless when the correct is voiced is 51.5%. 
+
+# The estimate 0.46521 for the slope correct_voicingvoiceless means that this is the change from the intercept value when the correct_voicing is voiceless. We add this number to the intercept to get 0.40557, which means that the chance to choose voiceless when the correct voicing is voiceless is 40.6%. This conversely means that there is a 49.4% chance to choose voiced when the correct voicing is voiceless.
+
+# Coefficients
+
+coef(glmer_incomplete)
+
+# The colmuns show that the by-item pair and by-listener coeffiecients vary for the effect of correct voicing. We thus see that the selection of correct voicing differs for each listener and each item pair. 
+
+# p-value
+
+# Make a null model.
+glmer_incomplete_null <- glmer(chosen_voicing ~ 1
+                               + (1 + correct_voicing | item_pair)
+                               + (1 + correct_voicing | listener),
+                               data = incomplete,
+                               family = binomial)
+
+# Run anova
+anova(glmer_incomplete_null,glmer_incomplete)
+
+# Chisq = 13.906, p = 0.0001922
 ```
 
 ### (C) Plot predictions
@@ -111,7 +163,25 @@ Estimating variance components for linear mixed effects models is mathematically
 ```{r}
 #| label: plot_prediction_in
 
-# YOUR CODE HERE
+incomplete_predict <- predict_response(glmer_incomplete,
+                             terms = "correct_voicing",
+                             type = "fixed",
+                             bias_correction = TRUE)
+
+incomplete_dataframe <- as.data.frame(incomplete_predict)
+
+ggplot(incomplete_dataframe, aes(x = x, y = predicted)) +
+  geom_point(size = 1) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.10) +
+  ylim(0,1) +
+  labs(x = "Correct voicing",
+       y = paste0("Probability of voiced"),
+       title = "Probabilty of choosing voiced in %")+
+  theme_minimal()
+
+  
+  
+
 
 ```
 

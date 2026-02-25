@@ -47,7 +47,7 @@ data_trimmed <- data |>
 # run lmer full model on phonemes/sec interacting with gender
 xmdl <- lmer(var_007 ~ var_001 * vp_003 +
                (1 | vp_id),
-             data_trimmed) 
+             data_trimmed)
 
 # run lmer reduced model on phonemes/sec with simple gender main effect
 xmdl_red <- lmer(var_007 ~ var_001 + vp_003 +
@@ -92,3 +92,63 @@ ggsave(filename = "../plots/Figure.png",
        height = 100,
        units = "mm",
        dpi = 300)
+
+
+## Fixed code
+
+# plot mean phoneme/second as a function of gender and mood
+Figure <- data |> 
+  group_by(var_001, vp_003) |> 
+  summarise(mean = mean(var_007)) |> 
+  ggplot(aes(x = var_001, y = mean, colour = vp_003, group = vp_003)) +
+  geom_point(pch = 15, size = 3) +
+  geom_line(lty = c(1,1,2,2)) +
+  scale_colour_manual("snt",
+                      guide = guide_legend(title = "Subject sex"),
+                      values = c("#0072B2", "#D55E00")) +
+  scale_y_continuous(expand = c(0, 0), breaks = (c(6.8,7,7.2,7.4,7.6)), limits = c(6.8,7.6)) +
+  labs(title = "Speech rate is influenced by mood and gender\n",
+       y = "Phonemes per second\n",
+       x = "\nMood") +
+  theme_minimal() +
+  theme(legend.position = "right",
+        axis.line = element_blank())
+
+# store plot
+ggsave(filename = "../plots/Figure.png", 
+       plot = Figure,
+       width = 150, 
+       height = 100,
+       units = "mm",
+       dpi = 300)
+
+# Model testing
+
+xmdl_red_null <- lmer(var_007 ~ var_001 +
+                   (1 | vp_id),
+                 data_trimmed,
+                 REML = FALSE)
+
+xmdl_red <- lmer(var_007 ~ var_001 + vp_003 +
+                   (1 | vp_id),
+                 data_trimmed,
+                 REML = FALSE) 
+
+anova(xmdl_red_null,xmdl_red)
+
+## New attempt
+
+xmdl <- lmer(var_007 ~ var_001 * vp_003 +
+               (1 | vp_id),
+             data_trimmed,
+             REML = FALSE)
+
+# run lmer reduced model on phonemes/sec with simple gender main effect
+xmdl_red <- lmer(var_007 ~ var_001 + vp_003 +
+                   (1 | vp_id),
+                 data_trimmed,
+                 REML = FALSE) 
+
+# compare full with reduced model
+model_comp <- 
+  anova(xmdl, xmdl_red)
