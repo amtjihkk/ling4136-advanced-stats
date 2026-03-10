@@ -163,6 +163,15 @@ mdl_q |>
   labs(title = 'Posterior density: Most likely change in log_rt', x = 'change in log_rt', y = 'posterior density') +
   theme_minimal()
 
-# The plot shows that the most likely decrease in log_rt is about -0.06 log for every increase in log_frequency. 
-# I manage to extract posterior sample for b_log_frequency and b_Intercept, but not use them in the plot. I don't know what is going on here. 
+# The plot shows that the most likely decrease in log_rt is about -0.06 log for every
+# increase in log_frequency. 
+
+mdl_q |> 
+  spread_draws(b_log_frequency, b_Intercept) |>
+  ggplot(aes(x = b_Intercept)) +
+  stat_halfeye(fill = '#a8ddb5') +
+  labs(title = 'Posterior density: Most likely intercept', x = 'Intercept', y = 'probability') +
+  theme_minimal()
+
+# The plot shows that the most likely intercept is around 6.75.
 ```
