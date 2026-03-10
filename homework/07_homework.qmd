@@ -83,15 +83,18 @@ Check which priors this model needs and specify weakly informative priors.
 
 Remember that weakly informative priors are priors that do not bias the posteriors in any direction, but reasonably constrain the parameter space, i.e. only reasonable values are assumed.
 
-For priors of class `Intercept` and `b`, constrain the parameter space with a wide normal distribution. 
+For priors of class `Intercept` and `b`, constrain the parameter space with a wide normal distribution.
 
 ```{r}
 #| label: get_prior
 
-# YOUR CODE HERE
+q_mdl <- bf(log_rt ~ log_frequency)
+get_prior(q_mdl, quantese)
 
 # specify weakly informative priors
-my_priors <- #YOUR PRIORS HERE
+q_priors <- c(prior(normal(6.5, 2.5), class ='Intercept'),
+              prior(normal(0, 5), class = 'b', coef = 'log_frequency'),
+              prior(normal(0, 2.5), class = 'sigma'))
 
 ```
 
@@ -101,7 +104,7 @@ We can also now get used to specifying priors for classes `sd` and `cor`. Priors
 #| label: add_sd_priors
 
 # add weakly informative priors for sd
-my_priors <- c(my_priors, 
+q_priors <- c(q_priors, 
                prior(cauchy(0, 3), class = 'sd', group = 'ItemID'),
                prior(cauchy(0, 3), class = 'sd', group = 'PartID'))
 
@@ -113,34 +116,53 @@ And finally, if your model as random slopes, they have by default a correlation 
 #| label: add_cor_priors
 
 # add weakly informative priors for cor
-my_priors <- c(my_priors, 
+q_priors <- c(q_priors, 
                prior(lkj(1), class = 'cor'))
 
 ```
 
 ### (B) Run model
 
-Now run the model with 4 chains, 1000 warm-up and 1000 post-warm-up samples per chain. Check that chains are reasonably mixed and that sampling yielded a sufficient effective sample size. If not address the issues appropriately (check slides again). 
+Now run the model with 4 chains, 1000 warm-up and 1000 post-warm-up samples per chain. Check that chains are reasonably mixed and that sampling yielded a sufficient effective sample size. If not address the issues appropriately (check slides again).
 
 ```{r}
 #| label: model_quant
 
-# if the model takes way too long to sample (more than 5-10 mins), use the following subset
-# quantese_sub <- quantese |> 
-#   filter(PartID %in% c("01","02","03","04",
-#                        "05","06","07","08"))
+mdl_q <- brm(log_rt ~ log_frequency +
+            (1 + log_frequency | ItemID) +
+            (1 + log_frequency | PartID),
+            family = gaussian(),
+            prior = q_priors,
+            data = quantese,
+            chains = 4,
+            cores = 4,
+            iter = 2000,
+            warmup = 1000,
+            thin = 1, 
+            seed = 42)
 
-# YOUR CODE HERE
+# 314 of 4000 (8%) ended in divergence. No biggie. 
 
+mcmc_plot(mdl_q, type = 'trace')
+
+# Most of the caterpillars look fine, however, ItemID_log_frequency,
+# Item_ID_Intercept_log_frequency and PartID_Intercept_log_frequency look wild. 
 ```
 
 ### (C) Plot posterior predictions
 
-Find a way to extract posterior samples from the model for the `Intercept` and the `log_frequency` coefficient and plot the predicted posterior mean linear model alongside its 95% Credible Intervals. There are many different ways to get there. 
+Find a way to extract posterior samples from the model for the `Intercept` and the `log_frequency` coefficient and plot the predicted posterior mean linear model alongside its 95% Credible Intervals. There are many different ways to get there.
 
 ```{r}
 #| label: plot_predictions
 
-# YOUR CODE HERE
+mdl_q |> 
+  spread_draws(b_log_frequency, b_Intercept) |>
+  ggplot(aes(x = b_log_frequency)) +
+  stat_halfeye(fill = '#43a2ca') +
+  labs(title = 'Posterior density: Most likely change in log_rt', x = 'change in log_rt', y = 'posterior density') +
+  theme_minimal()
 
+# The plot shows that the most likely decrease in log_rt is about -0.06 log for every increase in log_frequency. 
+# I manage to extract posterior sample for b_log_frequency and b_Intercept, but not use them in the plot. I don't know what is going on here. 
 ```

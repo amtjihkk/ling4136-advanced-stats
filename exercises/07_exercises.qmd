@@ -72,7 +72,7 @@ my_priors <- c(prior(normal(9, 3), class = 'Intercept'),
 # run model
 xmdl_sqrt <- brm(sqrt_dist ~ Sem,
             family = gaussian(),
-            file = "../../models/sqrt_sim.RDS",
+            file = "../models/sqrt_sim.RDS",
             prior = my_priors,
             data = sim,
             chains = 4,
@@ -91,9 +91,13 @@ Use the `mcmc_plot()` function to assess if the sampling chains have converged. 
 ```{r}
 #| label: mcmc-plot
 
-# YOUR CODE HERE
-# YOUR ASSESSMENT HERE
+mcmc_plot(xmdl_sqrt, type = 'trace')
+mcmc_dens_overlay(xmdl_sqrt)
 
+
+# R-hat value should be 1.00
+# Bulk_ESS and Tail_ESS should have high values (at least 400 and at least 100)
+# If not, fix with longer chains
 ```
 
 # (B) Assessing chain convergence
