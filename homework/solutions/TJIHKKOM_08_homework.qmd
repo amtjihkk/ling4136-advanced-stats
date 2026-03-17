@@ -1,0 +1,251 @@
+---
+title: "session08 - homework"
+format: html
+editor: visual
+date: 2025-07-17
+author: Timo Roettger
+execute:
+  error: false
+  warning: false
+  message: false
+  cache: true
+bibliography: ../resources/bibliography.bib
+---
+
+# Preamble: Loading packages and configuration
+
+```{r}
+#| label: data_and_libraries
+#| echo: false
+
+# just run this code chunk
+# function to ignoring the setting of the relative path below when knitting
+run_if_not_knitting <- function(expr) {
+  if (!isTRUE(getOption("knitr.in.progress"))) {
+    eval(expr)
+  }
+}
+
+# nifty code using the pacman package
+# it checks if the packages specified below are installed, if not, they will be installed, if yes, they will be loaded
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(rstudioapi, tidyverse, tidybayes, brms, bayesplot, bayestestR, modelr)
+
+# set the current working directory to the one where this file is
+run_if_not_knitting(current_working_dir <- dirname(rstudioapi::getActiveDocumentContext()$path))
+run_if_not_knitting(setwd(current_working_dir))
+
+# options to increase efficiency of brms models (optional)
+#options(brms.backend = "cmdstanr")
+options(mc.cores = parallel::detectCores())
+
+```
+
+# Exercise
+
+We will be re-analyzing the data from @winter2013making.
+
+```{r}
+#| label: preprocessing_sim
+
+# Load our datasets
+sim <- read_csv("../../data/linguistic_similarity.csv") |> 
+  mutate(Sem = as.factor(Sem),
+         Phon = as.factor(Phon))
+sim
+
+```
+
+We will now retrace the original article's complete analysis. In their original analysis, they were interested in whether (a) semantic similarity between cities, (b) phonological similarity between cities, and (c) their interaction affects how close/far apart participants draw the cities.
+
+## (a) Specify Priors
+
+Specify the model formula and appropriate weakly informative priors for all relevant predictors. Contrast-code the predictors.
+
+```{r}
+#| label: model_formula_sim
+
+
+# contrast code
+contrasts(sim$Phon) <- contr.sum(2)
+contrasts(sim$Sem) <- contr.sum(2)
+
+
+# define formula
+sim_formula <- bf(Distance ~ Sem * Phon)
+
+# get priors
+get_prior(sim_formula, sim)
+
+my_priors <-  c(prior(normal(74,34.1), class = 'Intercept'),
+               prior(normal(0,34.1), class = 'sigma'),
+               prior(normal(0,250), class = 'b', coef = Phon1),
+               prior(normal(0,250), class = 'b', coef = Sem1),
+               prior(normal(0,250), class = 'b', coef = Sem1:Phon1))
+
+```
+
+## (b) Run the appropriate model for the research question
+
+```{r}
+#| label: model_sim
+
+xmdl_sim <- brm(sim_formula,
+                  family = gaussian(),
+                  prior = my_priors,
+                  data = sim,
+                  chains = 4,
+                  cores = 4, 
+                  iter = 2000,
+                  warmup = 1000,
+                  thin = 1,
+                  seed = 42)
+
+```
+
+## (c) Posterior predicive check
+
+Check the overall model fit with posterior predictive checks. If the model does not fit the data well, fix the problem (check `06_homework_solutions.qmd` for inspiration).
+
+```{r}
+#| label: model_fit
+
+pp_check(xmdl_sim, ndraws = 100)
+
+# pp check bad, sqrt transformation
+
+sim <- sim |> 
+  mutate(sqrt_dist = sqrt(Distance))
+
+
+# run model
+xmdl_sim_sqrt <- brm(sqrt_dist ~ Sem * Phon,
+            family = gaussian(),
+            prior = my_priors,
+            data = sim,
+            chains = 4,
+            cores = 4, 
+            iter = 2000,
+            warmup = 1000,
+            thin = 1,
+            seed = 42)
+
+# posterior_predictive check
+pp_check(xmdl_sim_sqrt, ndraws = 100)
+
+# looks a tad better. 
+```
+
+## (d) Assess sampling diagnostics
+
+Check that chains are reasonably mixed and that sampling yielded a sufficient number of effective sample size. If there are issues, address them accordingly.
+
+```{r}
+#| label: sampling_diagnostics
+
+xmdl_sim_sqrt
+
+# Rhat = 1. Bulk_ESS < 400, Tail_ESS < 100. 
+
+mcmc_plot(xmdl_sim_sqrt, type = 'trace')
+
+# Caterpillars looking nice.
+
+mcmc_dens_overlay(xmdl_sim_sqrt)
+
+# Cool. 
+```
+
+## (e) Interpret the results
+
+Now interpret the model relative to the research question and describe uncertainty, visualize posteriors, calculate posterior probabilities of direction, and calculate Bayes Factors for evidence for and against the posterior coefficients being point zero.
+
+(Note: When you want to extract interaction terms like `b_Sem1:Phon1`, you have to put single quotation marks around them because R struggles with interpreting the colon)
+
+```{r}
+#| label: interpret_sim
+
+xmdl_sim_sqrt
+
+# Posterior mean for Sem1 is 0.34, for Phon1 -0.22 and for Sem1:Phon1 -0.05.
+# Since the predictors are contrast coded, the difference between conditions is double
+# the output, i.e. mean change from different to similar in Sem condition is 0.68, in 
+# Phon -0.44 and in the interaction Sem*Phon -0.20, because it is multiplied by four. 
+# This means that the model predicts semantically similar city names being further 
+# apart, phonetically similar ones closer, and when both condition change from
+# different to similar, the cities are predicted to be closer. 
+
+# 95% CI for Intercept = 1.02; Sem1 = 0.94; Phon1 = 1.00; Sem1*Phon1 = 1.96. 
+# CI for Phon1 and Sem1*Phon1 crosses 0. The printed numbers are again doubled due to 
+# contrast coding, interaction multiplied by 4. 
+
+
+# posterior probability direction
+
+p_direction(xmdl_sim_sqrt)
+
+# The interaction is not so strong. 
+
+xmdl_sim_sqrt |> 
+  spread_draws(b_Sem1, b_Phon1, `b_Sem1:Phon1`) |> 
+  gather_draws(b_Phon1, b_Sem1,`b_Sem1:Phon1`) |>
+  ggplot(aes(x = .value)) +
+  stat_halfeye(fill = '#756bb1') +
+  geom_vline(xintercept = 0, lty = 'dashed') +
+  geom_density(fill = "#bcbddc", alpha = 0.5) +
+  facet_wrap(~ .variable, scales = "free") +
+  labs(
+    x = "Posterior slope",
+    y = "Density",
+    title = "Distribution of posterior") +
+  theme_minimal()
+
+
+# Calculating Bayes Factor
+
+posteriors <- xmdl_sim_sqrt |> 
+  spread_draws(b_Sem1, b_Phon1, `b_Sem1:Phon1`) |> 
+  select(b_Sem1, b_Phon1, `b_Sem1:Phon1`)
+
+xmdl_sim_sqrt_priors <- brm(sqrt_dist ~ Sem * Phon,
+            family = gaussian(),
+            prior = my_priors,
+            sample_prior = "only",
+            data = sim,
+            chains = 4,
+            cores = 4, 
+            iter = 2000,
+            warmup = 1000,
+            thin = 1,
+            seed = 42)
+
+priors <- xmdl_sim_sqrt_priors |> 
+  spread_draws(b_Sem1, b_Phon1, `b_Sem1:Phon1`) |> 
+  select(b_Sem1, b_Phon1, `b_Sem1:Phon1`)
+
+bayesfactor_parameters(posteriors, priors, direction = "two-sided", null = 0)
+
+# The BFs for the parameters are anecdotal or non-existent.
+# No evidence against the null. 
+```
+
+## (g) Write up your entire analysis:
+
+Priors were set to flat or weakly informative based on the suggestion of R.
+
+Posterior distributions of the square root transformed model indicate that Distance is estimated to increase by 0.68 units when the Sem condition changes from different to similar (95% CI: 0.11-0.5), decrease by 0.44 units when the Phon condition changes from different to similar (95% CI: -0.47-0.03 and decrease by 0.20 units in the interaction between the two conditions (95% CI: -0.30-0.19).
+
+For the Sem condition, the 99.85% of the posterior samples are positive, which indicates that negative values are possible but implausible. For the Phon condition 95.58% of the posterior samples are negative, which indicates that positive values cannot be ruled out. For the interaction, 64.60% of the posterior samples are negative, which indicates a high degree of uncertainty.
+
+The Savage-Dickey density ratio was calculated by relating the evidence for the model based on the priors only to the evidence for the model based on both priors and likelihood. Using this to calculate Bayes factor gives near 0 values for all predictors, providing no reason to reject the null.
+
+## OPTIONAL (h) compare your interpretation to the original findings
+
+YOUR COMPARISON HERE
+
+# References
+
+<!-- References will auto-populate in the refs div below -->
+
+::: {#refs}
+:::
