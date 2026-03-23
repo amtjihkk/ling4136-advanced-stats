@@ -1,0 +1,277 @@
+---
+title: "session09 - exercises"
+format: html
+editor: visual
+date: 2025-07-17
+author: Timo Roettger
+execute:
+  error: false
+  warning: false
+  message: false
+  cache: false
+bibliography: ../resources/bibliography.bib
+---
+
+# Preamble: Loading packages and configuration
+
+```{r}
+#| label: data_and_libraries
+#| echo: false
+
+# just run this code chunk
+# function to ignoring the setting of the relative path below when knitting
+run_if_not_knitting <- function(expr) {
+  if (!isTRUE(getOption("knitr.in.progress"))) {
+    eval(expr)
+  }
+}
+
+# nifty code using the pacman package
+# it checks if the packages specified below are installed, if not, they will be installed, if yes, they will be loaded
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(rstudioapi, tidyverse, tidybayes, brms, bayestestR, bayesplot, modelr)
+
+# set the current working directory to the one where this file is
+run_if_not_knitting(current_working_dir <- dirname(rstudioapi::getActiveDocumentContext()$path))
+run_if_not_knitting(setwd(current_working_dir))
+
+```
+
+# Introduction
+
+The main **learning goals** of this week's practical parts are:
+
+-   getting an intuition about the gap between verbal hypotheses and formal hypotheses
+
+# The data
+
+In this dataset, we will be analyzing data from @kilpatrick2023random:
+
+In a nutshell, the authors were interested in whether there is a relationship between the form of a word and its meaning by looking at Japanese Pokemon names.
+
+Let's have a look at the data:
+
+```{r}
+#| label: data
+
+# Load in the dataset and already remove irrelevant stuff:
+pokemon <- read_csv('../../data/Japanese_Pokemon.csv') |> 
+  select(-`Sum of values`, -Checksum)
+
+# check data set:
+pokemon
+
+```
+
+What you see here are the following variables:
+
+Variables:
+
+`Designation`: source of Pokemon name. Official = the official names of Japanese Pokemon; Elicited = elicited names from naive participants.
+
+`pokemonname`: Pokemon name in Japanese
+
+`Output`: Pokemon name in transcribed form
+
+`Length`: Amount of phones in name
+
+`Evolution`: Evolution stage of Pokemons: 1 = pre-evolution; 2 = post-evolution, NA = do not evolve
+
+`f` = amount of /f/ sounds in name
+
+`T` = amount of /T/ sounds in name
+
+...
+
+and many more different sounds.
+
+Now imagine researchers want to use this data set to *test* the following hypothesis:
+
+*The evolution stage of a Pokemon is reflected in aspects of its Japanese name*
+
+# Exercise
+
+## A: Preregister your analysis
+
+Take the hypothesis and what you know about the data set and its structure to predict a very specific relationship that you can test. You are allowed to look at the dataset, but do not look at concrete relationships that might be a manifestation of the hypothesis.
+
+### Preregistration:
+
+I will predict length by evolution stage. My hypotheses are that evolution stage 2 will have longer names than evolution stage 1. I will only use official names and exclude NAs from the analysis.
+
+## B: Run your preregistered analysis
+
+Run the preregistered analysis made in (A) above and interpret your results relative to the hypothesis.
+
+```{r}
+
+# filter out NA and elicited.
+
+pokemon_tidy <- pokemon |>
+  filter(Designation == 'Official') |>
+  filter(Evolution != 'NA')
+
+# contrast code Evolution, since it is now a binary value.
+pokemon_tidy <- pokemon_tidy |> 
+  mutate(Evolution = as.factor(Evolution))
+
+contrasts(pokemon_tidy$Evolution) <- contr.sum(2)
+
+# specify formula
+pokemon_formula <- bf(Length ~ Evolution)
+
+# get priors
+get_prior(pokemon_formula, pokemon_tidy)
+
+# specify priors.
+pokemon_priors <-  c(prior(normal(8, 2.5), class = 'Intercept'),
+               prior(normal(0, 2.5), class = 'sigma'),
+               prior(normal(0, 30), class = 'b'))
+
+
+xmdl_pokemon <- brm(pokemon_formula,
+                  family = gaussian(),
+                  prior = pokemon_priors,
+                  data = pokemon_tidy,
+                  chains = 4,
+                  cores = 4, 
+                  iter = 2000,
+                  warmup = 1000,
+                  thin = 1,
+                  seed = 42)
+
+xmdl_pokemon
+
+pp_check(xmdl_pokemon, ndraws = 100)
+
+# Due to contrast coding, the Estimate has to be doubled. Thus, the condition 
+# Evolution1 (i.e. Evolution stage 1) causes a decrease of 0.90 in length from the 
+# Intercept. In other words, if I understand correctly, the intercepts predicts that
+# the median length is 7.73 and a change to Evolution stage 1 decreases the 
+# median length to 6.83.
+# However, if the correct interpretation is that a change from evolution stage 1
+# to 2 decreases length by 0.90, it still shows that length is affected by evolution
+# stage. 
+```
+
+## C: Show contradicting results
+
+Now explore the data and find two alternative way to test the research hypothesis that yield convincing results that go in opposite directions based of your findings in (A). Justify all your choices verbally after the fact.
+
+### Alternative 1:
+
+```{r}
+
+# In this alternative, Evolution condition will have the opposite effect.
+# Let's use the whole dataset, just filter out NA.
+
+pokemon_tidy_alt1 <- pokemon |>
+  filter(Evolution != 'NA')
+  
+
+# contrast code Evolution, since it is now a binary value.
+
+pokemon_tidy_alt1 <- pokemon_tidy_alt1 |> 
+  mutate(Evolution = as.factor(Evolution))
+
+contrasts(pokemon_tidy_alt1$Evolution) <- contr.sum(2)
+
+pokemon_tidy_alt1 <- pokemon_tidy_alt1 |> 
+  mutate(Designation = as.factor(Designation))
+
+contrasts(pokemon_tidy_alt1$Designation) <- contr.sum(2)
+
+# specify formula. I will now predict k based on evolution. 
+pokemon_formula_alt1 <- bf(k ~ Evolution)
+
+# get priors
+get_prior(pokemon_formula_alt1, pokemon_tidy_alt1)
+
+# specify priors. 
+pokemon_priors_alt1 <-  c(prior(normal(7, 2.5), class = 'Intercept'),
+               prior(normal(0, 2.5), class = 'sigma'),
+               prior(normal(0, 35), class = 'b'))
+
+xmdl_pokemon1 <- brm(pokemon_formula_alt1,
+                  family = gaussian(),
+                  prior = pokemon_priors_alt1,
+                  data = pokemon_tidy_alt1,
+                  chains = 4,
+                  cores = 4, 
+                  iter = 2000,
+                  warmup = 1000,
+                  thin = 1,
+                  seed = 42)
+
+xmdl_pokemon1
+
+# There is an effect! Condition Evolution1 gives 0.04 k's more! In other words, 
+# Evolution stage 1 increases the amount of k's. In other words, the hypothesis
+# is confirmed because the amount of k's are influenced by evolution stage.
+```
+
+### Alternative 2:
+
+```{r}
+
+# In this model, I will get a stronger effect than in the preregistered model.
+# I will use only elicited data, as this can show that people have clear preferences
+# for the relationship between length and evolution stage.
+
+pokemon_tidy_alt2 <- pokemon |>
+  filter(Designation != 'Official') |>
+  filter(Evolution != 'NA')
+
+# contrast code Evolution, since it is now a binary value.
+
+pokemon_tidy_alt2 <- pokemon_tidy_alt2 |> 
+  mutate(Evolution = as.factor(Evolution))
+
+contrasts(pokemon_tidy_alt2$Evolution) <- contr.sum(2)
+
+# specify formula
+pokemon_formula_alt2 <- bf(Length ~ Evolution)
+
+# get priors
+get_prior(pokemon_formula_alt2, pokemon_tidy_alt2)
+
+# specify priors
+pokemon_priors_alt2 <-  c(prior(normal(8, 2.5), class = 'Intercept'),
+               prior(normal(0, 2.5), class = 'sigma'),
+               prior(normal(0, 35), class = 'b'))
+
+xmdl_pokemon2 <- brm(pokemon_formula_alt2,
+                  family = gaussian(),
+                  prior = pokemon_priors_alt2,
+                  data = pokemon_tidy_alt2,
+                  chains = 4,
+                  cores = 4, 
+                  iter = 2000,
+                  warmup = 1000,
+                  thin = 1,
+                  seed = 42)
+
+xmdl_pokemon2
+
+# The effect here is even stronger than in the preregistered model. A change in
+# evolution condition causes whopping -1.52 decrease in length. 
+```
+
+## D: Researcher degrees of freedom
+
+Note down all dimensions of researcher degrees of freedom that make the mapping of the hypothesis onto your data analysis vague. How many possible combinations can you think of?
+
+The hypothesis leaves a lot of room for the researcher to interpret the meaning of "Evolution stage" and "reflected in aspects of its Japanese name". The evolution stages are either 1, 2 or NA, however, a quick Google search will show that some NA Pokemon are in fact evolution stages, because Pokemon can have 3. It is not required to have have more than two stages to test the hypothesis, but the Pokemon with NA can either be no evolution or middle evolution.
+
+The dataset contains a lot of variables, and it is not clear what these are. For example, the sounds represented by capital letters (e.g. /T/, /X/ and /C/) are not intuitive to understand.
+
+I can also choose to include only official, only elicited or both official and elicited Pokemon names. It is not clear why official and elicited are included in the same dataset and how these are meant to be used.
+
+I had the freedom to only use elicited data to get a stronger effect in the same direction as the preregistered result. I also had the freedom to only predict a single sound in the name to get an effect in the opposite direction from the preregistered result. Conclusion: It is possible to model many models to test different relationships based on a vaguely worded hypothesis.
+
+# References
+
+<!-- References will auto-populate in the refs div below -->
+
+::: {#refs}
+:::
